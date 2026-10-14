@@ -5,29 +5,48 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build & package extension
-        run: npm run zip
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glib2.0-utils zip
 
       - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & package extension ZIP
+        run: |
+          # 1. Compile GLib schema files
+          if [ -d "schemas" ]; then
+            glib-compile-schemas schemas/
+          fi
+
+          # 2. Package into extension release zip
+          ZIP_NAME="vitalsWidget@ctrln3rd.github.com.zip"
+          zip -r "$ZIP_NAME" \
+            extension.js \
+            prefs.js \
+            config.js \
+            icons.js \
+            ring.js \
+            vitals.js \
+            stylesheet.css \
+            metadata.json \
+            prefs/ \
+            sensors/ \
+            schemas/ \
+            LICENSE
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -35,6 +54,6 @@ jobs:
           name: 'v${{ steps.version.outputs.VERSION }}'
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: extension.zip
+          files: vitalsWidget@ctrln3rd.github.com.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
