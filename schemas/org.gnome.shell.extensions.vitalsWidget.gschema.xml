@@ -44,11 +44,11 @@
     <key name="show-temp" type="b"><default>true</default></key>
     <key name="show-gpu" type="b"><default>true</default></key>
 
-    <key name="cpu-color" type="s"><default>'#3498db'</default></key>
-    <key name="ram-color" type="s"><default>'#2ecc71'</default></key>
-    <key name="storage-color" type="s"><default>'#f39c12'</default></key>
-    <key name="temp-color" type="s"><default>'#e74c3c'</default></key>
-    <key name="gpu-color" type="s"><default>'#9b59b6'</default></key>
+    <key name="cpu-color" type="s"><default>'#ca9ee6'</default></key>
+    <key name="ram-color" type="s"><default>'#ca9ee6'</default></key>
+    <key name="storage-color" type="s"><default>'#ca9ee6'</default></key>
+    <key name="temp-color" type="s"><default>'#ca9ee6'</default></key>
+    <key name="gpu-color" type="s"><default>'#ca9ee6'</default></key>
 
     <key name="cpu-update-interval" type="i"><default>2000</default></key>
     <key name="ram-update-interval" type="i"><default>2000</default></key>

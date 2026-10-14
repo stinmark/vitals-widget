@@ -1,33 +1,23 @@
-import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
-
-export interface DetailItem {
-  label: string;
-  value: string;
-}
+import GLib from "gi://GLib";
+import Gio from "gi://Gio";
 
 export class GPUSensor {
-  private _gpuType:
-    | 'nvidia'
-    | 'amd_sysfs'
-    | 'amd_radeontop'
-    | 'intel'
-    | 'none' = 'none';
-  private _gpuPaths: string[] = [];
-  private _errorCount: number = 0;
-  private _maxErrors: number = 5;
-  private _disabled: boolean = false;
-  private _currentUsage: number = 0;
-  private _gpuCount: number = 0;
+  _gpuType = "none";
+  _gpuPaths = [];
+  _errorCount = 0;
+  _maxErrors = 5;
+  _disabled = false;
+  _currentUsage = 0;
+  _gpuCount = 0;
 
   constructor() {
     this._detectGPUs();
   }
 
-  private _detectGPUs(): void {
+  _detectGPUs() {
     // 1. Check for NVIDIA
-    if (GLib.find_program_in_path('nvidia-smi')) {
-      this._gpuType = 'nvidia';
+    if (GLib.find_program_in_path("nvidia-smi")) {
+      this._gpuType = "nvidia";
       this._gpuCount = 1;
       return;
     }
@@ -35,13 +25,12 @@ export class GPUSensor {
     // 2. Check for AMD and intel via sysfs (scanning all cards)
     for (let i = 0; i < 10; i++) {
       const baseDir = `/sys/class/drm/card${i}/device`;
-
       // Check for AMD
       if (
         Gio.File.new_for_path(`${baseDir}/gpu_busy_percent`).query_exists(null)
       ) {
         this._gpuPaths.push(`${baseDir}/gpu_busy_percent`);
-        this._gpuType = 'amd_sysfs';
+        this._gpuType = "amd_sysfs";
       }
       // Check for Intel (i915/xe drivers often expose 'busy' info differently)
       else if (
@@ -51,41 +40,33 @@ export class GPUSensor {
       ) {
         this._gpuPaths.push(`${baseDir}/gt/gt0/rps_act_freq_mhz`);
 
-        if (this._gpuType === 'none') {
-          this._gpuType = 'intel';
+        if (this._gpuType === "none") {
+          this._gpuType = "intel";
         }
       }
     }
 
     if (this._gpuPaths.length > 0) {
-      //this._gpuType = 'amd_sysfs';
+      //this._gpuType = "amd_sysfs";
       this._gpuCount = this._gpuPaths.length;
       return;
     }
 
-    // 3. Fallback to radeontop
-    if (GLib.find_program_in_path('radeontop')) {
-      this._gpuType = 'amd_radeontop';
-      this._gpuCount = 1;
-      return;
-    }
-
-    this._gpuType = 'none';
+    this._gpuType = "none";
   }
 
-  async getValue(): Promise<number> {
-    if (this._disabled || this._gpuType === 'none') return 0;
+  async getValue() {
+    if (this._disabled || this._gpuType === "none") return 0;
 
     try {
-      let usages: number[] = [];
-
+      let usages = [];
       switch (this._gpuType) {
-        case 'nvidia':
+        case "nvidia":
           const proc = Gio.Subprocess.new(
             [
-              'nvidia-smi',
-              '--query-gpu=utilization.gpu',
-              '--format=csv,noheader,nounits',
+              "nvidia-smi",
+              "--query-gpu=utilization.gpu",
+              "--format=csv,noheader,nounits",
             ],
             Gio.SubprocessFlags.STDOUT_PIPE,
           );
@@ -93,18 +74,18 @@ export class GPUSensor {
           usages =
             stdout
               ?.trim()
-              .split('\n')
+              .split("\n")
               .map((val) => parseInt(val)) || [];
           break;
-        case 'intel':
-        case 'amd_sysfs':
+        case "intel":
+        case "amd_sysfs":
           for (const path of this._gpuPaths) {
             const usage = await this._readSysfsUsage(path);
             usages.push(usage);
           }
-          break;
 
-        case 'amd_radeontop':
+          break;
+        case "amd_radeontop":
           return await this._getAmdRadeontopUsage();
       }
 
@@ -119,43 +100,44 @@ export class GPUSensor {
     }
   }
 
-  async getDetails(): Promise<DetailItem[]> {
-    const details: DetailItem[] = [
-      { label: 'Usage', value: `${Math.round(this._currentUsage)}%` },
+  async getDetails() {
+    const details = [
+      { label: "Usage", value: `${Math.round(this._currentUsage)}%` },
       {
-        label: 'Type',
+        label: "Type",
         value:
-          this._gpuType === 'none'
-            ? 'Not detected'
-            : this._gpuType.toUpperCase().replace('_', ' '),
+          this._gpuType === "none"
+            ? "Not detected"
+            : this._gpuType.toUpperCase().replace("_", " "),
       },
     ];
 
-    if (this._gpuType !== 'none') {
-      details.push({ label: 'GPU Count', value: this._gpuCount.toString() });
-
+    if (this._gpuType !== "none") {
+      details.push({ label: "GPU Count", value: this._gpuCount.toString() });
       // Get detailed info based on GPU type
       try {
         switch (this._gpuType) {
-          case 'nvidia':
+          case "nvidia":
             const proc = Gio.Subprocess.new(
               [
-                'nvidia-smi',
-                '--query-gpu=name,temperature.gpu,memory.used,memory.total',
-                '--format=csv,noheader,nounits',
+                "nvidia-smi",
+                "--query-gpu=name,temperature.gpu,memory.used,memory.total",
+                "--format=csv,noheader,nounits",
               ],
               Gio.SubprocessFlags.STDOUT_PIPE,
             );
+
             const [stdout] = await proc.communicate_utf8_async(null, null);
             if (stdout) {
-              const lines = stdout.trim().split('\n');
+              const lines = stdout.trim().split("\n");
               lines.forEach((line, idx) => {
-                const [name, temp, memUsed, memTotal] = line.split(', ');
+                const [name, temp, memUsed, memTotal] = line.split(", ");
                 if (lines.length > 1) {
                   details.push({ label: `GPU ${idx}`, value: name });
                 } else {
-                  details.push({ label: 'Name', value: name });
+                  details.push({ label: "Name", value: name });
                 }
+
                 if (temp)
                   details.push({
                     label: `Temperature ${idx}`,
@@ -169,37 +151,38 @@ export class GPUSensor {
                 }
               });
             }
-            break;
 
-          case 'intel':
-          case 'amd_sysfs': {
+            break;
+          case "intel":
+          case "amd_sysfs": {
             for (let i = 0; i < this._gpuPaths.length; i++) {
               const path = this._gpuPaths[i];
+
               // Get the base device directory
-              const deviceDir = path.substring(0, path.lastIndexOf('/'));
-              const baseDir = deviceDir.includes('/gt/gt0')
-                ? deviceDir.replace('/gt/gt0', '')
+              const deviceDir = path.substring(0, path.lastIndexOf("/"));
+              const baseDir = deviceDir.includes("/gt/gt0")
+                ? deviceDir.replace("/gt/gt0", "")
                 : deviceDir;
 
               // 1. Vendor/Model Identification
               const vendorId = await this._readSysfsValue(`${baseDir}/vendor`);
-              const vendorName = vendorId.includes('0x8086')
-                ? 'Intel'
-                : vendorId.includes('0x1002')
-                  ? 'AMD'
+              const vendorName = vendorId.includes("0x8086")
+                ? "Intel"
+                : vendorId.includes("0x1002")
+                  ? "AMD"
                   : vendorId;
               details.push({ label: `Card ${i} Vendor`, value: vendorName });
 
               // 2. Specific metrics based on type
               switch (this._gpuType) {
-                case 'amd_sysfs':
+                case "amd_sysfs":
                   const vramUsed = await this._readSysfsValue(
                     `${baseDir}/mem_info_vram_used`,
                   );
                   const vramTotal = await this._readSysfsValue(
                     `${baseDir}/mem_info_vram_total`,
                   );
-                  if (vramTotal !== '0') {
+                  if (vramTotal !== "0") {
                     const usedGB = (parseInt(vramUsed) / 1024 ** 3).toFixed(2);
                     const totalGB = (parseInt(vramTotal) / 1024 ** 3).toFixed(
                       2,
@@ -209,9 +192,9 @@ export class GPUSensor {
                       value: `${usedGB} / ${totalGB} GB`,
                     });
                   }
-                  break;
 
-                case 'intel':
+                  break;
+                case "intel":
                   const freq = await this._readSysfsValue(
                     `${baseDir}/gt/gt0/rps_act_freq_mhz`,
                   );
@@ -219,61 +202,43 @@ export class GPUSensor {
                   break;
               }
             }
+
             break;
           }
-
-          case 'amd_radeontop':
-            details.push({ label: 'Info', value: 'Using radeontop utility' });
+          case "amd_radeontop":
+            details.push({ label: "Info", value: "Using radeontop utility" });
             break;
         }
       } catch (e) {
         // Ignore errors in detailed info
       }
     }
-
     return details;
   }
-
-  private async _readSysfsUsage(path: string): Promise<number> {
+  async _readSysfsUsage(path) {
     try {
       const file = Gio.File.new_for_path(path);
       const [contents] = await file.load_contents_async(null);
-      const data = new TextDecoder().decode(contents as unknown as Uint8Array);
+      const data = new TextDecoder().decode(contents);
       return parseInt(data.trim()) || 0;
     } catch {
       return 0;
     }
   }
 
-  private async _getAmdRadeontopUsage(): Promise<number> {
-    try {
-      const proc = Gio.Subprocess.new(
-        ['radeontop', '-d', '-', '-l', '1'],
-        Gio.SubprocessFlags.STDOUT_PIPE,
-      );
-      const [stdout] = await proc.communicate_utf8_async(null, null);
-      const match = stdout?.match(/gpu\s+(\d+(?:\.\d+)?)%/);
-      const usage = match ? Math.round(parseFloat(match[1])) : 0;
-      this._currentUsage = usage;
-      return usage;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  private _handleError(e: any): void {
+  _handleError(e) {
     this._errorCount++;
     if (this._errorCount >= this._maxErrors) this._disabled = true;
   }
 
   // helper to read text from sysfs files
-  private async _readSysfsValue(path: string): Promise<string> {
+  async _readSysfsValue(path) {
     try {
       const file = Gio.File.new_for_path(path);
       const [contents] = await file.load_contents_async(null);
-      return new TextDecoder().decode(contents as Uint8Array).trim();
+      return new TextDecoder().decode(contents).trim();
     } catch {
-      return '0';
+      return "0";
     }
   }
 }
