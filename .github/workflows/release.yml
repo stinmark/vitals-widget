@@ -19,7 +19,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y glib2.0-utils zip
+          sudo apt-get install -y libglib2.0-bin zip
 
       - name: Get version from tag
         id: version
