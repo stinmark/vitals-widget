@@ -41,7 +41,7 @@ export function createAboutPage() {
   kofiRow.add_suffix(kofiIcon);
   kofiRow.connect("activated", () => {
     Gio.AppInfo.launch_default_for_uri(
-      "https://github.com/sponsors/austinemk",
+      "https://github.com/sponsors/stinmark",
       null,
     );
   });
@@ -65,7 +65,7 @@ export function createAboutPage() {
   githubRow.add_suffix(githubIcon);
   githubRow.connect("activated", () => {
     Gio.AppInfo.launch_default_for_uri(
-      "https://github.com/austinemk/vitals-widget",
+      "https://github.com/stinmark/vitals-widget",
       null,
     );
   });
@@ -83,7 +83,7 @@ export function createAboutPage() {
   issueRow.add_suffix(issueIcon);
   issueRow.connect("activated", () => {
     Gio.AppInfo.launch_default_for_uri(
-      "https://github.com/austinemk/vitals-widget/issues",
+      "https://github.com/stinmark/vitals-widget/issues",
       null,
     );
   });
@@ -97,7 +97,7 @@ export function createAboutPage() {
 
   const authorRow = new Adw.ActionRow({
     title: "Developer",
-    subtitle: "ctrln3rd",
+    subtitle: "Austine",
   });
   creditsGroup.add(authorRow);
 
