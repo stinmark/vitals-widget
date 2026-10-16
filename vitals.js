@@ -25,7 +25,7 @@ export const VitalItem = GObject.registerClass(
     constructor(type, settings, sensor) {
       super({
         style_class: "vital-item",
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         x_align: Clutter.ActorAlign.CENTER,
         reactive: true,
         can_focus: true,
@@ -106,8 +106,9 @@ export const VitalItem = GObject.registerClass(
     }
 
     _buildUI() {
-      this.vertical =
-        this._settings.get_string("vital-orientation") === "vertical";
+      this.orientation = this._settings.get_string("vital-orientation") === "vertical"
+        ? Clutter.Orientation.VERTICAL
+        : Clutter.Orientation.HORIZONTAL;
       const container = new St.Widget({
         layout_manager: new Clutter.BinLayout(),
       });

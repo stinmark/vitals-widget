@@ -1,6 +1,7 @@
 import St from "gi://St";
 import GObject from "gi://GObject";
 import GLib from "gi://GLib";
+import Clutter from "gi://Clutter";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import { VitalItem } from "./vitals.js";
@@ -38,7 +39,9 @@ const VitalsWidget = GObject.registerClass(
 
     _buildUI() {
       this._updateContainerStyle();
-      this.vertical = this._settings.get_string("orientation") === "vertical";
+      this.orientation = this._settings.get_string("orientation") === "vertical"
+        ? Clutter.Orientation.VERTICAL
+        : Clutter.Orientation.HORIZONTAL;      
     }
 
     _initializeSensors() {
@@ -74,8 +77,9 @@ const VitalsWidget = GObject.registerClass(
       // Inside _connectSettings()
       this._handlerIds.push(
         this._settings.connect("changed::orientation", () => {
-          this.vertical =
-            this._settings.get_string("orientation") === "vertical";
+          this.orientation = this._settings.get_string("orientation") === "vertical"
+          ? Clutter.Orientation.VERTICAL
+          : Clutter.Orientation.HORIZONTAL;
         }),
       );
 
