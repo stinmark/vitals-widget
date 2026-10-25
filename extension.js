@@ -36,6 +36,19 @@ function overlaps(monitor, width, height, x, y) {
   );
 }
 
+// Connector of the monitor saved as id = [vendor, product, serial], or null
+// for the primary monitor or when it is not connected. Identical monitors
+// are told apart by the saved connector.
+export function pickMonitorConnector(monitors, id, savedConnector) {
+  if (id.every((part) => part === "")) return null;
+  const matches = monitors.filter(
+    (m) => m.vendor === id[0] && m.product === id[1] && m.serial === id[2],
+  );
+  if (matches.length === 0) return null;
+  return (matches.find((m) => m.connector === savedConnector) ?? matches[0])
+    .connector;
+}
+
 // Keep the whole widget inside the monitor (top-left aligned if it is larger)
 export function clampToMonitor({ monitor, width, height, x, y }) {
   return {
@@ -143,6 +156,8 @@ const VitalsWidget = GObject.registerClass(
         "position-y-anchor",
         "position-x-unit",
         "position-y-unit",
+        "monitor-id",
+        "monitor-connector",
       ];
       positionKeys.forEach((key) => {
         this._handlerIds.push(
@@ -225,8 +240,30 @@ const VitalsWidget = GObject.registerClass(
       });
     }
 
+    // Monitor chosen in the settings if connected, otherwise the primary one
+    _targetMonitor() {
+      const layout = Main.layoutManager;
+      const monitorManager = global.backend.get_monitor_manager();
+      const connector = pickMonitorConnector(
+        monitorManager.get_monitors().map((m) => ({
+          vendor: m.get_vendor() ?? "",
+          product: m.get_product() ?? "",
+          serial: m.get_serial() ?? "",
+          connector: m.get_connector(),
+        })),
+        this._settings.get_value("monitor-id").deepUnpack(),
+        this._settings.get_string("monitor-connector"),
+      );
+      // -1 when the monitor is connected but off, e.g. a closed laptop lid
+      const index =
+        connector === null
+          ? -1
+          : monitorManager.get_monitor_for_connector(connector);
+      return (index >= 0 && layout.monitors[index]) || layout.primaryMonitor;
+    }
+
     _updatePosition() {
-      const monitor = Main.layoutManager.primaryMonitor;
+      const monitor = this._targetMonitor();
       if (!monitor) return;
       // Before enable() adds it the widget has no size yet; its size change
       // re-runs this anyway

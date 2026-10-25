@@ -7,7 +7,7 @@ export default class VitalsWidgetPreferences extends ExtensionPreferences {
   async fillPreferencesWindow(window) {
     const settings = this.getSettings();
     // Add pages in order: About, General, Vitals
-    window.add(createGeneralPage(settings));
+    window.add(createGeneralPage(settings, window));
     window.add(createVitalsPage(settings));
     window.add(createAboutPage());
   }

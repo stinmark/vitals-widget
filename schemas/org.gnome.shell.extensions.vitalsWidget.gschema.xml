@@ -47,6 +47,19 @@
       <default>'percent'</default>
       <summary>Unit of position-y (percent of the monitor height or pixels)</summary>
     </key>
+    <key name="monitor-id" type="(sss)">
+      <default>('', '', '')</default>
+      <summary>Vendor, product and serial of the monitor showing the widget</summary>
+      <description>All empty means the primary monitor.</description>
+    </key>
+    <key name="monitor-connector" type="s">
+      <default>''</default>
+      <summary>Connector of the chosen monitor, to tell identical monitors apart</summary>
+    </key>
+    <key name="monitor-name" type="s">
+      <default>''</default>
+      <summary>Name of the chosen monitor, shown while it is disconnected</summary>
+    </key>
 
     <key name="background-color" type="s"><default>'rgba(0, 0, 0, 0.8)'</default></key>
     <key name="border-color" type="s"><default>'rgba(255, 255, 255, 0.2)'</default></key>

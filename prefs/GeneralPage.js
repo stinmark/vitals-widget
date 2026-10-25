@@ -2,8 +2,9 @@ import Adw from "gi://Adw";
 import Gtk from "gi://Gtk";
 import Gdk from "gi://Gdk";
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 
-export function createGeneralPage(settings) {
+export function createGeneralPage(settings, window) {
   const generalPage = new Adw.PreferencesPage({
     title: "General",
     icon_name: "preferences-system-symbolic",
@@ -17,6 +18,7 @@ export function createGeneralPage(settings) {
   });
   generalPage.add(positionGroup);
 
+  addMonitorRow(window, positionGroup, settings);
   addAxisRows(positionGroup, settings, "x");
   addAxisRows(positionGroup, settings, "y");
 
@@ -173,6 +175,48 @@ export function createGeneralPage(settings) {
   addColorRow(ringsGroup, settings, "icon-color", "Icon and Label Color");
   return generalPage;
 }
+// Monitors from Mutter's GetCurrentState (after recursiveUnpack)
+export function parseMonitors(state) {
+  const [, monitors] = state;
+  return monitors.map(([[connector, vendor, product, serial], , props]) => ({
+    vendor,
+    product,
+    serial,
+    connector,
+    name: props["display-name"] || `${vendor} ${product}`,
+  }));
+}
+
+// Entries of the monitor chooser and the one matching the saved monitor.
+// A saved monitor that is not connected is listed at the end.
+export function monitorChoices(monitors, saved) {
+  const choices = [{ label: "Primary monitor", monitor: null }];
+  monitors.forEach((monitor) =>
+    choices.push({ label: `${monitor.name} (${monitor.connector})`, monitor }),
+  );
+  const [vendor, product, serial] = saved.id;
+  if (!vendor && !product && !serial) return { choices, selected: 0 };
+
+  const same = (c) =>
+    c.monitor &&
+    c.monitor.vendor === vendor &&
+    c.monitor.product === product &&
+    c.monitor.serial === serial;
+  let selected = choices.findIndex(
+    (c) => same(c) && c.monitor.connector === saved.connector,
+  );
+  if (selected < 0) selected = choices.findIndex(same);
+  if (selected < 0) {
+    const name = saved.name || `${vendor} ${product}`;
+    choices.push({
+      label: `${name} (disconnected)`,
+      monitor: { vendor, product, serial, connector: saved.connector, name },
+    });
+    selected = choices.length - 1;
+  }
+  return { choices, selected };
+}
+
 // Spin range for a position distance. Wide enough that existing values
 // (e.g. 200% to reach a second monitor) are never clamped by the row.
 export function distanceRange(anchor, unit) {
@@ -191,6 +235,116 @@ function addSpinRow(group, settings, key, title, lower, upper, step = 1) {
     adjustment: new Gtk.Adjustment({ lower, upper, step_increment: step }),
   });
   settings.bind(key, row, "value", Gio.SettingsBindFlags.DEFAULT);
+  group.add(row);
+}
+// Helper to add the monitor chooser. The list comes from Mutter over D-Bus
+// because the preferences run outside GNOME Shell and GdkMonitor has no serial.
+function addMonitorRow(window, group, settings) {
+  const row = new Adw.ComboRow({ title: "Monitor" });
+  const cancellable = new Gio.Cancellable();
+  // delay() cannot be undone, so the three monitor keys are written through
+  // their own delayed object and reach the widget as one change
+  const batch = new Gio.Settings({
+    settings_schema: settings.settings_schema,
+    backend: settings.backend,
+  });
+  batch.delay();
+  let monitors = [];
+  let choices = [];
+  let savedIndex = 0;
+  let updating = false;
+  let rebuildId = 0;
+
+  const rebuild = () => {
+    const result = monitorChoices(monitors, {
+      id: settings.get_value("monitor-id").deepUnpack(),
+      connector: settings.get_string("monitor-connector"),
+      name: settings.get_string("monitor-name"),
+    });
+    const labels = result.choices.map((c) => c.label);
+    const changed = labels.join("\n") !== choices.map((c) => c.label).join("\n");
+    choices = result.choices;
+    savedIndex = result.selected;
+    updating = true;
+    if (changed) row.model = new Gtk.StringList({ strings: labels });
+    row.selected = result.selected;
+    updating = false;
+  };
+  // A settings change can arrive while the row is still notifying the
+  // selection that caused it: rebuild once it is done
+  const queueRebuild = () => {
+    if (rebuildId) return;
+    rebuildId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+      rebuildId = 0;
+      rebuild();
+      return GLib.SOURCE_REMOVE;
+    });
+  };
+
+  const refresh = () => {
+    Gio.DBus.session.call(
+      "org.gnome.Mutter.DisplayConfig",
+      "/org/gnome/Mutter/DisplayConfig",
+      "org.gnome.Mutter.DisplayConfig",
+      "GetCurrentState",
+      null,
+      null,
+      Gio.DBusCallFlags.NONE,
+      -1,
+      cancellable,
+      (connection, res) => {
+        try {
+          monitors = parseMonitors(connection.call_finish(res).recursiveUnpack());
+        } catch (e) {
+          if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) return;
+          console.warn(`[VitalsWidget] Cannot list monitors: ${e.message}`);
+          monitors = [];
+        }
+        rebuild();
+      },
+    );
+  };
+
+  row.connect("notify::selected", () => {
+    // Replacing the model can notify again after the rebuild: only a
+    // different choice is written, otherwise each write rebuilds forever
+    if (updating || row.selected === savedIndex) return;
+    const monitor = choices[row.selected]?.monitor ?? null;
+    batch.set_string("monitor-connector", monitor?.connector ?? "");
+    batch.set_string("monitor-name", monitor?.name ?? "");
+    batch.set_value(
+      "monitor-id",
+      new GLib.Variant(
+        "(sss)",
+        monitor
+          ? [monitor.vendor, monitor.product, monitor.serial]
+          : ["", "", ""],
+      ),
+    );
+    batch.apply();
+  });
+
+  const settingsId = settings.connect("changed::monitor-id", queueRebuild);
+  const signalId = Gio.DBus.session.signal_subscribe(
+    "org.gnome.Mutter.DisplayConfig",
+    "org.gnome.Mutter.DisplayConfig",
+    "MonitorsChanged",
+    "/org/gnome/Mutter/DisplayConfig",
+    null,
+    Gio.DBusSignalFlags.NONE,
+    refresh,
+  );
+  // The page is not disposed while GJS holds it: clean up when the window closes
+  window.connect("close-request", () => {
+    cancellable.cancel();
+    if (rebuildId) GLib.source_remove(rebuildId);
+    settings.disconnect(settingsId);
+    Gio.DBus.session.signal_unsubscribe(signalId);
+    return false;
+  });
+
+  rebuild();
+  refresh();
   group.add(row);
 }
 // Helper to add the anchor, unit and distance rows of one position axis
