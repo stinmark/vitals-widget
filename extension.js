@@ -19,6 +19,7 @@ const VitalsWidget = GObject.registerClass(
     _settings;
     _intervals = new Map();
     _handlerIds = [];
+    _monitorsChangedId = null;
 
     constructor(settings) {
       super({
@@ -72,6 +73,11 @@ const VitalsWidget = GObject.registerClass(
         this._settings.connect("changed::position-y", () =>
           this._updatePosition(),
         ),
+      );
+      // Recompute the position when monitors are added/removed or rearranged
+      this._monitorsChangedId = Main.layoutManager.connect(
+        "monitors-changed",
+        () => this._updatePosition(),
       );
 
       // Inside _connectSettings()
@@ -187,6 +193,10 @@ const VitalsWidget = GObject.registerClass(
       // 2. Disconnect all settings signals
       this._handlerIds.forEach((id) => this._settings.disconnect(id));
       this._handlerIds = [];
+      if (this._monitorsChangedId) {
+        Main.layoutManager.disconnect(this._monitorsChangedId);
+        this._monitorsChangedId = null;
+      }
       // 3. Destroy children
       this._sensors.forEach((sensor) => sensor.destroy?.());
       this._vitals.forEach((vital) => vital.destroy());
