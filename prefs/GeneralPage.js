@@ -17,22 +17,8 @@ export function createGeneralPage(settings) {
   });
   generalPage.add(positionGroup);
 
-  addSpinRow(
-    positionGroup,
-    settings,
-    "position-x",
-    "Horizontal Position (%)",
-    0,
-    100,
-  );
-  addSpinRow(
-    positionGroup,
-    settings,
-    "position-y",
-    "Vertical Position (%)",
-    0,
-    100,
-  );
+  addAxisRows(positionGroup, settings, "x");
+  addAxisRows(positionGroup, settings, "y");
 
   // Visibility Group
   const visibilityGroup = new Adw.PreferencesGroup({
@@ -187,6 +173,16 @@ export function createGeneralPage(settings) {
   addColorRow(ringsGroup, settings, "icon-color", "Icon and Label Color");
   return generalPage;
 }
+// Spin range for a position distance. Wide enough that existing values
+// (e.g. 200% to reach a second monitor) are never clamped by the row.
+export function distanceRange(anchor, unit) {
+  const max = unit === "pixels" ? 20000 : 1000;
+  return {
+    lower: anchor === "center" ? -max : 0,
+    upper: max,
+    digits: unit === "pixels" ? 0 : 1,
+  };
+}
 // Helper to add a SpinRow for numeric settings
 
 function addSpinRow(group, settings, key, title, lower, upper, step = 1) {
@@ -196,6 +192,77 @@ function addSpinRow(group, settings, key, title, lower, upper, step = 1) {
   });
   settings.bind(key, row, "value", Gio.SettingsBindFlags.DEFAULT);
   group.add(row);
+}
+// Helper to add the anchor, unit and distance rows of one position axis
+function addAxisRows(group, settings, axis) {
+  const horizontal = axis === "x";
+  const name = horizontal ? "Horizontal" : "Vertical";
+  const anchorKey = `position-${axis}-anchor`;
+  const unitKey = `position-${axis}-unit`;
+  const anchors = horizontal
+    ? ["left", "center", "right"]
+    : ["top", "center", "bottom"];
+  const units = ["percent", "pixels"];
+
+  const anchorRow = new Adw.ComboRow({
+    title: `${name} Anchor`,
+    model: new Gtk.StringList({
+      strings: horizontal
+        ? ["Left", "Center", "Right"]
+        : ["Top", "Center", "Bottom"],
+    }),
+  });
+  anchorRow.selected = anchors.indexOf(settings.get_string(anchorKey));
+
+  const unitRow = new Adw.ComboRow({
+    title: `${name} Unit`,
+    model: new Gtk.StringList({ strings: ["Percent of screen", "Pixels"] }),
+  });
+  unitRow.selected = units.indexOf(settings.get_string(unitKey));
+
+  // The range must be set before binding, or the bound value gets clamped
+  const range = distanceRange(
+    settings.get_string(anchorKey),
+    settings.get_string(unitKey),
+  );
+  const distanceRow = new Adw.SpinRow({
+    title: `${name} Distance`,
+    subtitle: `From the chosen edge. With Center, negative values move ${horizontal ? "left" : "up"}`,
+    digits: range.digits,
+    adjustment: new Gtk.Adjustment({
+      lower: range.lower,
+      upper: range.upper,
+      step_increment: 1,
+    }),
+  });
+  settings.bind(
+    `position-${axis}`,
+    distanceRow,
+    "value",
+    Gio.SettingsBindFlags.DEFAULT,
+  );
+
+  const updateRange = () => {
+    const r = distanceRange(
+      settings.get_string(anchorKey),
+      settings.get_string(unitKey),
+    );
+    distanceRow.adjustment.lower = r.lower;
+    distanceRow.adjustment.upper = r.upper;
+    distanceRow.digits = r.digits;
+  };
+  anchorRow.connect("notify::selected", () => {
+    settings.set_string(anchorKey, anchors[anchorRow.selected]);
+    updateRange();
+  });
+  unitRow.connect("notify::selected", () => {
+    settings.set_string(unitKey, units[unitRow.selected]);
+    updateRange();
+  });
+
+  group.add(anchorRow);
+  group.add(unitRow);
+  group.add(distanceRow);
 }
 // Helper to add a color picker row
 

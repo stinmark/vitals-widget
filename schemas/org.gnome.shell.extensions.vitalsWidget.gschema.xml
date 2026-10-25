@@ -11,9 +11,42 @@
     <value nick="fahrenheit" value="2"/>
   </enum>
 
+  <enum id="org.gnome.shell.extensions.vitalswidget.HorizontalAnchor">
+    <value nick="left" value="0"/>
+    <value nick="center" value="1"/>
+    <value nick="right" value="2"/>
+  </enum>
+
+  <enum id="org.gnome.shell.extensions.vitalswidget.VerticalAnchor">
+    <value nick="top" value="0"/>
+    <value nick="center" value="1"/>
+    <value nick="bottom" value="2"/>
+  </enum>
+
+  <enum id="org.gnome.shell.extensions.vitalswidget.PositionUnit">
+    <value nick="percent" value="0"/>
+    <value nick="pixels" value="1"/>
+  </enum>
+
   <schema id="org.gnome.shell.extensions.vitalswidget" path="/org/gnome/shell/extensions/vitalswidget/">
     <key name="position-x" type="d"><default>5</default></key>
     <key name="position-y" type="d"><default>88</default></key>
+    <key name="position-x-anchor" enum="org.gnome.shell.extensions.vitalswidget.HorizontalAnchor">
+      <default>'left'</default>
+      <summary>Edge position-x is measured from</summary>
+    </key>
+    <key name="position-y-anchor" enum="org.gnome.shell.extensions.vitalswidget.VerticalAnchor">
+      <default>'top'</default>
+      <summary>Edge position-y is measured from</summary>
+    </key>
+    <key name="position-x-unit" enum="org.gnome.shell.extensions.vitalswidget.PositionUnit">
+      <default>'percent'</default>
+      <summary>Unit of position-x (percent of the monitor width or pixels)</summary>
+    </key>
+    <key name="position-y-unit" enum="org.gnome.shell.extensions.vitalswidget.PositionUnit">
+      <default>'percent'</default>
+      <summary>Unit of position-y (percent of the monitor height or pixels)</summary>
+    </key>
 
     <key name="background-color" type="s"><default>'rgba(0, 0, 0, 0.8)'</default></key>
     <key name="border-color" type="s"><default>'rgba(255, 255, 255, 0.2)'</default></key>
