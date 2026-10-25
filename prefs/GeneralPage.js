@@ -14,7 +14,7 @@ export function createGeneralPage(settings, window) {
   const positionGroup = new Adw.PreferencesGroup({
     title: "Widget Position",
     description:
-      "Position on screen (drag widget to reposition or use sliders)",
+      "Choose the monitor and how far the widget sits from an edge, or drag it on the desktop.",
   });
   generalPage.add(positionGroup);
 
