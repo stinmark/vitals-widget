@@ -47,16 +47,11 @@ export const VitalItem = GObject.registerClass(
       Main.layoutManager.uiGroup.add_child(this._menu.actor);
       this._connectSettings();
       this._updateStyle();
-
-      // Click event to toggle menu
-      this.connect("button-press-event", (actor, event) => {
-        this._toggleMenu();
-        return Clutter.EVENT_STOP;
-      });
+      // Clicks are handled by the widget, which tells them apart from drags
     }
 
     // Inside VitalItem class in vitals.ts
-    async _toggleMenu() {
+    async toggleMenu() {
       // Check if popups are enabled in settings
       const popupsEnabled = this._settings.get_boolean("enable-popups");
       if (!popupsEnabled) return;

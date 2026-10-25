@@ -1,6 +1,7 @@
 import St from "gi://St";
 import GObject from "gi://GObject";
 import GLib from "gi://GLib";
+import Gio from "gi://Gio";
 import Clutter from "gi://Clutter";
 import Meta from "gi://Meta";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
@@ -33,6 +34,47 @@ function overlaps(monitor, width, height, x, y) {
     x + width > monitor.x &&
     y < monitor.y + monitor.height &&
     y + height > monitor.y
+  );
+}
+
+// Inverse of axisOffset: distance from the anchor for a given offset
+function axisDistance(anchor, monitorSize, widgetSize, offset) {
+  if (anchor === "center") return offset - (monitorSize - widgetSize) / 2;
+  if (anchor === "end") return monitorSize - widgetSize - offset;
+  return offset;
+}
+
+function toSettingValue(unit, distance, monitorSize) {
+  if (unit === "pixels") return Math.round(distance);
+  return Math.round((distance / monitorSize) * 1000) / 10;
+}
+
+// Settings values that place the widget at (x, y) with the given anchors and
+// units: the inverse of computePosition
+export function positionToValues({
+  monitor,
+  width,
+  height,
+  x,
+  y,
+  anchorX,
+  anchorY,
+  unitX,
+  unitY,
+}) {
+  const dx = axisDistance(toAnchor(anchorX), monitor.width, width, x - monitor.x);
+  const dy = axisDistance(toAnchor(anchorY), monitor.height, height, y - monitor.y);
+  return {
+    valueX: toSettingValue(unitX, dx, monitor.width),
+    valueY: toSettingValue(unitY, dy, monitor.height),
+  };
+}
+
+// Index of the monitor containing the point, or -1
+export function monitorIndexAt(monitors, x, y) {
+  return monitors.findIndex(
+    (m) =>
+      x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height,
   );
 }
 
@@ -105,6 +147,10 @@ const VitalsWidget = GObject.registerClass(
     _monitorsChangedId = null;
     _sizeHandlerIds = [];
     _positionLaterId = null;
+    // Pointer press being tracked as a click or a drag
+    _press = null;
+    _dragging = false;
+    _dragGrab = null;
 
     constructor(settings) {
       super({
@@ -263,6 +309,8 @@ const VitalsWidget = GObject.registerClass(
     }
 
     _updatePosition() {
+      // While dragging the pointer decides where the widget is
+      if (this._dragging) return;
       const monitor = this._targetMonitor();
       if (!monitor) return;
       // Before enable() adds it the widget has no size yet; its size change
@@ -291,6 +339,144 @@ const VitalsWidget = GObject.registerClass(
           this._updatePosition();
           return GLib.SOURCE_REMOVE;
         });
+    }
+
+    vfunc_button_press_event(event) {
+      if (event.get_button() !== Clutter.BUTTON_PRIMARY)
+        return Clutter.EVENT_PROPAGATE;
+      // The release went to another grab (e.g. a modal dialog): drop the
+      // press, and a press outside the widget is not ours
+      if (this._press) {
+        this._endPress();
+        this._updatePosition();
+        if (!this.contains(global.stage.get_event_actor(event)))
+          return Clutter.EVENT_PROPAGATE;
+      }
+      const [x, y] = event.get_coords();
+      this._press = {
+        x,
+        y,
+        widgetX: this.x,
+        widgetY: this.y,
+        actor: global.stage.get_event_actor(event),
+      };
+      this._dragGrab = global.stage.grab(this);
+      return Clutter.EVENT_STOP;
+    }
+
+    vfunc_motion_event(event) {
+      if (!this._press) return Clutter.EVENT_PROPAGATE;
+      // The release went to another grab (e.g. the overview): drop the press
+      if (!(event.get_state() & Clutter.ModifierType.BUTTON1_MASK)) {
+        this._endPress();
+        this._updatePosition();
+        return Clutter.EVENT_PROPAGATE;
+      }
+      const [x, y] = event.get_coords();
+      const dx = x - this._press.x;
+      const dy = y - this._press.y;
+      if (!this._dragging) {
+        const threshold = St.Settings.get().drag_threshold;
+        if (
+          !this._settings.get_boolean("allow-drag") ||
+          (Math.abs(dx) <= threshold && Math.abs(dy) <= threshold)
+        )
+          return Clutter.EVENT_STOP;
+        this._dragging = true;
+      }
+      // Keep the widget inside the monitor under the pointer
+      const monitors = Main.layoutManager.monitors;
+      const monitor =
+        monitors[monitorIndexAt(monitors, x, y)] ?? this._targetMonitor();
+      const pos = clampToMonitor({
+        monitor,
+        width: this.width,
+        height: this.height,
+        x: Math.round(this._press.widgetX + dx),
+        y: Math.round(this._press.widgetY + dy),
+      });
+      this.set_position(pos.x, pos.y);
+      return Clutter.EVENT_STOP;
+    }
+
+    vfunc_button_release_event(event) {
+      if (event.get_button() !== Clutter.BUTTON_PRIMARY || !this._press)
+        return Clutter.EVENT_PROPAGATE;
+      const [x, y] = event.get_coords();
+      const { actor } = this._press;
+      const dragged = this._dragging;
+      this._endPress();
+      if (dragged) {
+        this._saveDraggedPosition(x, y);
+      } else {
+        // A click without moving opens the popup of the sensor under it
+        for (let a = actor; a && a !== this; a = a.get_parent()) {
+          if (a instanceof VitalItem) {
+            a.toggleMenu();
+            break;
+          }
+        }
+      }
+      return Clutter.EVENT_STOP;
+    }
+
+    _endPress() {
+      this._dragGrab?.dismiss();
+      this._dragGrab = null;
+      this._press = null;
+      this._dragging = false;
+    }
+
+    // Save where the widget was dropped, measured from the monitor under the
+    // pointer with the current anchors and units. That monitor becomes the
+    // chosen one if it is not the one the position was measured from.
+    _saveDraggedPosition(px, py) {
+      const monitors = Main.layoutManager.monitors;
+      const current = this._targetMonitor();
+      const monitor = monitors[monitorIndexAt(monitors, px, py)] ?? current;
+      // delay() cannot be undone, so write through a separate object; all
+      // keys then reach the widget as one change
+      const batch = new Gio.Settings({
+        settings_schema: this._settings.settings_schema,
+        backend: this._settings.backend,
+      });
+      batch.delay();
+      if (monitor.index !== current.index) {
+        const monitorManager = global.backend.get_monitor_manager();
+        const dropped = monitorManager
+          .get_monitors()
+          .find(
+            (m) =>
+              monitorManager.get_monitor_for_connector(m.get_connector()) ===
+              monitor.index,
+          );
+        if (dropped) {
+          batch.set_string("monitor-connector", dropped.get_connector());
+          batch.set_string("monitor-name", dropped.get_display_name() ?? "");
+          batch.set_value(
+            "monitor-id",
+            new GLib.Variant("(sss)", [
+              dropped.get_vendor() ?? "",
+              dropped.get_product() ?? "",
+              dropped.get_serial() ?? "",
+            ]),
+          );
+        }
+      }
+      const values = positionToValues({
+        monitor,
+        width: this.width,
+        height: this.height,
+        x: this.x,
+        y: this.y,
+        anchorX: this._settings.get_string("position-x-anchor"),
+        anchorY: this._settings.get_string("position-y-anchor"),
+        unitX: this._settings.get_string("position-x-unit"),
+        unitY: this._settings.get_string("position-y-unit"),
+      });
+      batch.set_double("position-x", values.valueX);
+      batch.set_double("position-y", values.valueY);
+      batch.apply();
     }
 
     _startUpdates() {
@@ -330,6 +516,8 @@ const VitalsWidget = GObject.registerClass(
     }
 
     destroy() {
+      // A drag interrupted by disable() (e.g. screen lock) is not saved
+      if (this._press) this._endPress();
       // 1. Kill timers
       this._clearTimers();
       // 2. Disconnect all settings signals

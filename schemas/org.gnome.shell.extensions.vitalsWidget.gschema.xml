@@ -60,6 +60,10 @@
       <default>''</default>
       <summary>Name of the chosen monitor, shown while it is disconnected</summary>
     </key>
+    <key name="allow-drag" type="b">
+      <default>true</default>
+      <summary>Move the widget by dragging it on the desktop</summary>
+    </key>
 
     <key name="background-color" type="s"><default>'rgba(0, 0, 0, 0.8)'</default></key>
     <key name="border-color" type="s"><default>'rgba(255, 255, 255, 0.2)'</default></key>

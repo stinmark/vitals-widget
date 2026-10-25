@@ -22,6 +22,13 @@ export function createGeneralPage(settings, window) {
   addAxisRows(positionGroup, settings, "x");
   addAxisRows(positionGroup, settings, "y");
 
+  const dragRow = new Adw.SwitchRow({
+    title: "Allow Dragging",
+    subtitle: "Move the widget by dragging it on the desktop",
+  });
+  settings.bind("allow-drag", dragRow, "active", Gio.SettingsBindFlags.DEFAULT);
+  positionGroup.add(dragRow);
+
   // Visibility Group
   const visibilityGroup = new Adw.PreferencesGroup({
     title: "Visibility & Interaction",
