@@ -9,7 +9,7 @@ A modern, customizable desktop system monitoring widget for GNOME Shell. Vitals 
 ## Features
 
 - **Monitored Vitals:** Track CPU usage, RAM utilization, storage space, temperatures, and GPU stats in real time.
-- **Flexible Positioning:** Drag or set precise screen coordinates (percentage-based) to anchor the widget anywhere on your desktop.
+- **Flexible Positioning:** Choose the monitor, then place the widget at a distance from any edge or the center, in pixels or as a percentage of the screen — or just drag it where you want it.
 - **Customizable Layouts:**
   - Horizontal or vertical orientation for both the main container and individual vital cards.
   - Adjustable background colors, border styling, padding, and rounded corners.
