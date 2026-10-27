@@ -68,17 +68,21 @@ export class GPUSensor {
           const proc = Gio.Subprocess.new(
             [
               this._nvidiaSmiPath,
-              "--query-gpu=utilization.gpu",
+              "--query-gpu=memory.used,memory.total,utilization.gpu",
               "--format=csv,noheader,nounits",
             ],
             Gio.SubprocessFlags.STDOUT_PIPE,
           );
           const [success, stdout] = proc.communicate_utf8(null, null);
-          usages =
-            stdout
-              ?.trim()
-              .split("\n")
-              .map((val) => parseInt(val)) || [];
+          usages = [];
+          if (stdout) {
+            const lines = stdout.trim().split("\n");
+            lines.forEach((line) => {
+              const [memUsed, memTotal, gpuUtil] = line.split(", ").map(Number);
+              this._gpuUtil = gpuUtil || 0;
+              usages.push(memTotal > 0 ? Math.round((memUsed / memTotal) * 100) : 0);
+            });
+          }
           break;
         case "intel":
         case "amd_sysfs":
@@ -106,7 +110,7 @@ export class GPUSensor {
 
   async getDetails() {
     const details = [
-      { label: "Usage", value: `${Math.round(this._currentUsage)}%` },
+      { label: "VRAM", value: `${Math.round(this._currentUsage)}%` },
       {
         label: "Type",
         value:
@@ -125,7 +129,7 @@ export class GPUSensor {
             const proc = Gio.Subprocess.new(
               [
                 this._nvidiaSmiPath,
-                "--query-gpu=name,temperature.gpu,memory.used,memory.total",
+                "--query-gpu=name,temperature.gpu,memory.used,memory.total,utilization.gpu",
                 "--format=csv,noheader,nounits",
               ],
               Gio.SubprocessFlags.STDOUT_PIPE,
@@ -135,7 +139,7 @@ export class GPUSensor {
             if (stdout) {
               const lines = stdout.trim().split("\n");
               lines.forEach((line, idx) => {
-                const [name, temp, memUsed, memTotal] = line.split(", ");
+                const [name, temp, memUsed, memTotal, gpuUtil] = line.split(", ");
                 if (lines.length > 1) {
                   details.push({ label: `GPU ${idx}`, value: name });
                 } else {
@@ -146,6 +150,11 @@ export class GPUSensor {
                   details.push({
                     label: `Temperature ${idx}`,
                     value: `${temp}°C`,
+                  });
+                if (gpuUtil)
+                  details.push({
+                    label: `Volatile ${idx}`,
+                    value: `${gpuUtil}%`,
                   });
                 if (memUsed && memTotal) {
                   details.push({

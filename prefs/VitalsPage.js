@@ -34,7 +34,11 @@ function createVitalGroup(page, settings, type) {
   );
   group.add(enableRow);
 
-  addColorRow(group, settings, `${type}-color`, "Ring Color");
+  addColorRow(group, settings, `${type}-color`, "VRAM Ring Color");
+
+  if (type === "gpu") {
+    addColorRow(group, settings, `${type}-second-color`, "GPU Util Ring Color");
+  }
 
   // Temperature Unit selection specifically for the temp group
   if (type === "temp") {

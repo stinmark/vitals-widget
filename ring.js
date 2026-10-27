@@ -7,6 +7,7 @@ export const RingProgress = GObject.registerClass(
     _type;
     _settings;
     _value = 0;
+    _secondValue = 0;
     _handlerIds = [];
 
     constructor(type, settings) {
@@ -43,8 +44,9 @@ export const RingProgress = GObject.registerClass(
       });
     }
 
-    setValue(value) {
+    setValue(value, secondValue = 0) {
       this._value = Math.min(100, Math.max(0, value));
+      this._secondValue = Math.min(100, Math.max(0, secondValue));
       this.queue_repaint();
     }
 
@@ -66,6 +68,12 @@ export const RingProgress = GObject.registerClass(
         const centerX = width / 2;
         const centerY = height / 2;
         const radius = Math.max(0, diameter / 2 - ringWidth / 2 - 2);
+        const isDualRing = this._type === "gpu" && this._secondValue > 0;
+        const innerRadius = isDualRing
+          ? Math.max(0, radius - ringWidth - 4)
+          : radius;
+
+        // Draw outer ring (VRAM)
         cr.setLineWidth(ringWidth);
         cr.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         cr.setSourceRGBA(
@@ -83,6 +91,37 @@ export const RingProgress = GObject.registerClass(
           cr.arc(centerX, centerY, radius, startAngle, endAngle);
           cr.setSourceRGBA(color.r, color.g, color.b, color.a);
           cr.stroke();
+        }
+
+        // Draw inner ring (GPU util) for dual ring mode
+        if (isDualRing) {
+          const secondColor = this._parseColor(
+            this._settings.get_string("gpu-second-color"),
+          );
+          cr.setLineWidth(ringWidth);
+          cr.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
+          cr.setSourceRGBA(
+            inactiveColor.r,
+            inactiveColor.g,
+            inactiveColor.b,
+            inactiveColor.a,
+          );
+          cr.stroke();
+          if (this._secondValue > 0) {
+            const startAngle = -Math.PI / 2;
+            const endAngle =
+              startAngle + (2 * Math.PI * this._secondValue) / 100;
+            cr.setLineWidth(ringWidth);
+            cr.setLineCap(Cairo.LineCap.ROUND);
+            cr.arc(centerX, centerY, innerRadius, startAngle, endAngle);
+            cr.setSourceRGBA(
+              secondColor.r,
+              secondColor.g,
+              secondColor.b,
+              secondColor.a,
+            );
+            cr.stroke();
+          }
         }
       } catch (e) {
         logError(e, "VitalsWidget: Error in RingProgress repaint");

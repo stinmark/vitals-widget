@@ -99,6 +99,7 @@
     <key name="storage-color" type="s"><default>'#ca9ee6'</default></key>
     <key name="temp-color" type="s"><default>'#ca9ee6'</default></key>
     <key name="gpu-color" type="s"><default>'#ca9ee6'</default></key>
+    <key name="gpu-second-color" type="s"><default>'#e6ca9e'</default></key>
 
     <key name="cpu-update-interval" type="i"><default>2000</default></key>
     <key name="ram-update-interval" type="i"><default>2000</default></key>
