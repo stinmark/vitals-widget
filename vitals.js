@@ -25,7 +25,7 @@ export const VitalItem = GObject.registerClass(
     constructor(type, settings, sensor) {
       super({
         style_class: "vital-item",
-        orientation: Clutter.Orientation.VERTICAL,
+        vertical: true,
         x_align: Clutter.ActorAlign.CENTER,
         reactive: true,
         can_focus: true,
@@ -106,9 +106,8 @@ export const VitalItem = GObject.registerClass(
     }
 
     _buildUI() {
-      this.orientation = this._settings.get_string("vital-orientation") === "vertical"
-        ? Clutter.Orientation.VERTICAL
-        : Clutter.Orientation.HORIZONTAL;
+      this.vertical =
+        this._settings.get_string("vital-orientation") === "vertical";
       const container = new St.Widget({
         layout_manager: new Clutter.BinLayout(),
       });
@@ -220,12 +219,16 @@ export const VitalItem = GObject.registerClass(
           typeof value === "number" && !isNaN(value) ? value : 0;
         this._currentValue = Math.min(100, Math.max(0, safeValue));
         if (this._ringProgress) {
-          this._ringProgress.setValue(this._currentValue);
+          const secondValue =
+            this._type === "gpu" ? this._sensor._gpuUtil || 0 : 0;
+          this._ringProgress.setValue(this._currentValue, secondValue);
         }
 
         if (this._label) {
           let labelText = `${Math.round(this._currentValue)}%`;
-          if (this._type === "temp") {
+          if (this._type === "gpu" && this._sensor._gpuUtil !== undefined) {
+            labelText = `${Math.round(this._currentValue)}%/${this._sensor._gpuUtil}%`;
+          } else if (this._type === "temp") {
             if (this._currentValue === 0) {
               labelText = "⏸";
             } else if (this._currentValue === 100) {
