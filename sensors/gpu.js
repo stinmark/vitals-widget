@@ -4,6 +4,7 @@ import Gio from "gi://Gio";
 export class GPUSensor {
   _gpuType = "none";
   _gpuPaths = [];
+  _nvidiaSmiPath = "";
   _errorCount = 0;
   _maxErrors = 5;
   _disabled = false;
@@ -16,8 +17,10 @@ export class GPUSensor {
 
   _detectGPUs() {
     // 1. Check for NVIDIA
-    if (GLib.find_program_in_path("nvidia-smi")) {
+    const nvidiaPath = GLib.find_program_in_path("nvidia-smi");
+    if (nvidiaPath) {
       this._gpuType = "nvidia";
+      this._nvidiaSmiPath = nvidiaPath;
       this._gpuCount = 1;
       return;
     }
@@ -64,13 +67,13 @@ export class GPUSensor {
         case "nvidia":
           const proc = Gio.Subprocess.new(
             [
-              "nvidia-smi",
+              this._nvidiaSmiPath,
               "--query-gpu=utilization.gpu",
               "--format=csv,noheader,nounits",
             ],
             Gio.SubprocessFlags.STDOUT_PIPE,
           );
-          const [stdout] = await proc.communicate_utf8_async(null, null);
+          const [success, stdout] = proc.communicate_utf8(null, null);
           usages =
             stdout
               ?.trim()
@@ -93,6 +96,7 @@ export class GPUSensor {
       const sum = usages.reduce((a, b) => a + b, 0);
       this._currentUsage = Math.round(sum / usages.length);
       this._gpuCount = usages.length;
+      this._errorCount = 0; // Reset error count on success
       return this._currentUsage;
     } catch (e) {
       this._handleError(e);
@@ -120,14 +124,14 @@ export class GPUSensor {
           case "nvidia":
             const proc = Gio.Subprocess.new(
               [
-                "nvidia-smi",
+                this._nvidiaSmiPath,
                 "--query-gpu=name,temperature.gpu,memory.used,memory.total",
                 "--format=csv,noheader,nounits",
               ],
               Gio.SubprocessFlags.STDOUT_PIPE,
             );
 
-            const [stdout] = await proc.communicate_utf8_async(null, null);
+            const [success, stdout] = proc.communicate_utf8(null, null);
             if (stdout) {
               const lines = stdout.trim().split("\n");
               lines.forEach((line, idx) => {
