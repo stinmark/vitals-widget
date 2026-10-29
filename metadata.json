@@ -7,9 +7,14 @@
   "name": "vitals widget",
   "settings-schema": "org.gnome.shell.extensions.vitalswidget",
   "shell-version": [
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
     "51"
   ],
   "url": "https://github.com/stinmark/vitals-widget",
   "uuid": "vitalsWidget@ctrln3rd.github.com",
-  "version": 9
+  "version": 10
 }

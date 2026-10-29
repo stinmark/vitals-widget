@@ -282,7 +282,19 @@ const VitalsWidget = GObject.registerClass(
 
     _updateVitalsVisibility() {
       this._vitals.forEach((vital, type) => {
-        vital.visible = this._settings.get_boolean(`show-${type}`);
+        const visible = this._settings.get_boolean(`show-${type}`);
+        vital.visible = visible;
+        if (visible) {
+          if (!this._intervals.has(type)) {
+            this._restartVitalTimer(type);
+          }
+        } else {
+          const timerId = this._intervals.get(type);
+          if (timerId) {
+            GLib.source_remove(timerId);
+            this._intervals.delete(type);
+          }
+        }
       });
     }
 
@@ -488,7 +500,12 @@ const VitalsWidget = GObject.registerClass(
 
     _restartVitalTimer(type) {
       const oldId = this._intervals.get(type);
-      if (oldId) GLib.source_remove(oldId);
+      if (oldId) {
+        GLib.source_remove(oldId);
+        this._intervals.delete(type);
+      }
+      if (!this._settings.get_boolean(`show-${type}`)) return;
+
       const interval = this._settings.get_int(`${type}-update-interval`);
       const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, interval, () => {
         const vital = this._vitals.get(type);
@@ -505,6 +522,7 @@ const VitalsWidget = GObject.registerClass(
             });
           return GLib.SOURCE_CONTINUE;
         }
+        this._intervals.delete(type);
         return GLib.SOURCE_REMOVE;
       });
       this._intervals.set(type, id);
