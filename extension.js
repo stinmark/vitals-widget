@@ -14,6 +14,41 @@ import { StorageSensor } from "./sensors/storage.js";
 import { TempSensor } from "./sensors/temp.js";
 import { GPUSensor } from "./sensors/gpu.js";
 
+// get_monitors() on MetaMonitorManager and MetaLogicalMonitor are both private
+// API before GNOME 49. Use the Mutter DisplayConfig D-Bus interface instead,
+// which has been stable across all versions and is what the prefs page already uses.
+// Returns a promise resolving to [{ vendor, product, serial, connector }]
+function fetchMonitorsFromDBus() {
+  return new Promise((resolve) => {
+    Gio.DBus.session.call(
+      "org.gnome.Mutter.DisplayConfig",
+      "/org/gnome/Mutter/DisplayConfig",
+      "org.gnome.Mutter.DisplayConfig",
+      "GetCurrentState",
+      null,
+      null,
+      Gio.DBusCallFlags.NONE,
+      -1,
+      null,
+      (conn, res) => {
+        try {
+          const [, monitors] = conn.call_finish(res).recursiveUnpack();
+          resolve(
+            monitors.map(([[connector, vendor, product, serial]]) => ({
+              vendor: vendor ?? "",
+              product: product ?? "",
+              serial: serial ?? "",
+              connector,
+            })),
+          );
+        } catch {
+          resolve([]);
+        }
+      },
+    );
+  });
+}
+
 // Offset of the widget's near side from the monitor origin along one axis.
 // anchor: "start" (left/top), "center" or "end" (right/bottom)
 function axisOffset(anchor, monitorSize, widgetSize, distance) {
@@ -147,6 +182,7 @@ const VitalsWidget = GObject.registerClass(
     _monitorsChangedId = null;
     _sizeHandlerIds = [];
     _positionLaterId = null;
+    _cachedMonitors = null;
     // Pointer press being tracked as a click or a drag
     _press = null;
     _dragging = false;
@@ -165,7 +201,7 @@ const VitalsWidget = GObject.registerClass(
       this._buildUI();
       this._initializeSensors();
       this._connectSettings();
-      this._updatePosition();
+      this._refreshMonitorCache();
       this._startUpdates();
     }
 
@@ -215,7 +251,9 @@ const VitalsWidget = GObject.registerClass(
       // Recompute the position when monitors are added/removed or rearranged
       this._monitorsChangedId = Main.layoutManager.connect(
         "monitors-changed",
-        () => this._updatePosition(),
+        () => {
+          this._refreshMonitorCache();
+        },
       );
       // Keep the distance from right/bottom/center anchors when the size changes
       ["notify::width", "notify::height"].forEach((signal) => {
@@ -298,17 +336,14 @@ const VitalsWidget = GObject.registerClass(
       });
     }
 
-    // Monitor chosen in the settings if connected, otherwise the primary one
+    // Monitor chosen in the settings if connected, otherwise the primary one.
+    // _cachedMonitors is populated async via D-Bus; falls back to primary in
+    // the meantime (or when no specific monitor is configured).
     _targetMonitor() {
       const layout = Main.layoutManager;
       const monitorManager = global.backend.get_monitor_manager();
       const connector = pickMonitorConnector(
-        monitorManager.get_monitors().map((m) => ({
-          vendor: m.get_vendor() ?? "",
-          product: m.get_product() ?? "",
-          serial: m.get_serial() ?? "",
-          connector: m.get_connector(),
-        })),
+        this._cachedMonitors ?? [],
         this._settings.get_value("monitor-id").deepUnpack(),
         this._settings.get_string("monitor-connector"),
       );
@@ -318,6 +353,13 @@ const VitalsWidget = GObject.registerClass(
           ? -1
           : monitorManager.get_monitor_for_connector(connector);
       return (index >= 0 && layout.monitors[index]) || layout.primaryMonitor;
+    }
+
+    _refreshMonitorCache() {
+      fetchMonitorsFromDBus().then((monitors) => {
+        this._cachedMonitors = monitors;
+        this._updatePosition();
+      });
     }
 
     _updatePosition() {
@@ -455,22 +497,21 @@ const VitalsWidget = GObject.registerClass(
       batch.delay();
       if (monitor.index !== current.index) {
         const monitorManager = global.backend.get_monitor_manager();
-        const dropped = monitorManager
-          .get_monitors()
-          .find(
-            (m) =>
-              monitorManager.get_monitor_for_connector(m.get_connector()) ===
-              monitor.index,
-          );
+        const monitors = this._cachedMonitors ?? [];
+        const dropped = monitors.find(
+          (m) =>
+            monitorManager.get_monitor_for_connector(m.connector) ===
+            monitor.index,
+        );
         if (dropped) {
-          batch.set_string("monitor-connector", dropped.get_connector());
-          batch.set_string("monitor-name", dropped.get_display_name() ?? "");
+          batch.set_string("monitor-connector", dropped.connector);
+          batch.set_string("monitor-name", dropped.name ?? "");
           batch.set_value(
             "monitor-id",
             new GLib.Variant("(sss)", [
-              dropped.get_vendor() ?? "",
-              dropped.get_product() ?? "",
-              dropped.get_serial() ?? "",
+              dropped.vendor,
+              dropped.product,
+              dropped.serial,
             ]),
           );
         }
