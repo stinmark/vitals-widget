@@ -9,9 +9,12 @@
   "shell-version": [
     "46",
     "47",
-    "48"
+    "48",
+    "49",
+    "50",
+    "51"
   ],
   "url": "https://github.com/stinmark/vitals-widget",
   "uuid": "vitalsWidget@ctrln3rd.github.com",
-  "version": 11
+  "version": 10
 }
